@@ -1,27 +1,155 @@
-// Base de datos NoSQL simulada en memoria
+// Base de datos NoSQL con persistencia en localStorage
 class CarvyDatabase {
     constructor() {
-        this.collections = {
+        this.storageKey = 'carvy_database';
+        
+        // Cargar datos del localStorage o inicializar vacío
+        this.loadFromStorage();
+        
+        // Si no hay datos, inicializar con datos por defecto
+        if (this.isEmpty()) {
+            this.initializeData();
+        }
+    }
+    
+    // Verificar si la base de datos está vacía
+    isEmpty() {
+        return Object.values(this.collections).every(collection => collection.length === 0);
+    }
+    
+    // Cargar datos del localStorage
+    loadFromStorage() {
+        try {
+            const savedData = localStorage.getItem(this.storageKey);
+            if (savedData) {
+                const data = JSON.parse(savedData);
+                this.collections = data.collections || this.getDefaultCollections();
+                this.counters = data.counters || this.getDefaultCounters();
+                
+                // Convertir fechas de string a Date objects
+                this.convertDatesFromStorage();
+            } else {
+                this.collections = this.getDefaultCollections();
+                this.counters = this.getDefaultCounters();
+            }
+        } catch (error) {
+            console.error('Error cargando datos del localStorage:', error);
+            this.collections = this.getDefaultCollections();
+            this.counters = this.getDefaultCounters();
+        }
+    }
+    
+    // Obtener estructura por defecto de colecciones
+    getDefaultCollections() {
+        return {
             users: [],
             doctors: [],
             patients: [],
             consultations: [],
             prescriptions: []
         };
-        
-        this.counters = {
+    }
+    
+    // Obtener contadores por defecto
+    getDefaultCounters() {
+        return {
             users: 0,
             doctors: 0,
             patients: 0,
             consultations: 0,
             prescriptions: 0
         };
+    }
+    
+    // Convertir fechas de strings a Date objects después de cargar
+    convertDatesFromStorage() {
+        const dateFields = ['createdAt', 'updatedAt', 'date'];
         
+        Object.values(this.collections).forEach(collection => {
+            collection.forEach(doc => {
+                dateFields.forEach(field => {
+                    if (doc[field] && typeof doc[field] === 'string') {
+                        doc[field] = new Date(doc[field]);
+                    }
+                });
+            });
+        });
+    }
+    
+    // Guardar datos en localStorage
+    saveToStorage() {
+        try {
+            const dataToSave = {
+                collections: this.collections,
+                counters: this.counters,
+                lastSaved: new Date().toISOString()
+            };
+            localStorage.setItem(this.storageKey, JSON.stringify(dataToSave));
+            console.log('✅ Datos guardados correctamente');
+        } catch (error) {
+            console.error('❌ Error guardando datos:', error);
+            // Si localStorage está lleno, limpiar datos antiguos
+            if (error.name === 'QuotaExceededError') {
+                this.clearOldData();
+                this.saveToStorage(); // Intentar guardar de nuevo
+            }
+        }
+    }
+    
+    // Limpiar datos antiguos si localStorage está lleno
+    clearOldData() {
+        // Mantener solo los últimos 100 registros de consultas y recetas
+        if (this.collections.consultations.length > 100) {
+            this.collections.consultations = this.collections.consultations
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                .slice(0, 100);
+        }
+        
+        if (this.collections.prescriptions.length > 100) {
+            this.collections.prescriptions = this.collections.prescriptions
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                .slice(0, 100);
+        }
+    }
+    
+    // Reiniciar base de datos (borrar todo)
+    reset() {
+        localStorage.removeItem(this.storageKey);
+        this.collections = this.getDefaultCollections();
+        this.counters = this.getDefaultCounters();
         this.initializeData();
+        console.log('🔄 Base de datos reiniciada');
+    }
+    
+    // Exportar datos como backup
+    exportData() {
+        return {
+            collections: this.collections,
+            counters: this.counters,
+            exportedAt: new Date().toISOString(),
+            version: '1.0'
+        };
+    }
+    
+    // Importar datos desde backup
+    importData(data) {
+        try {
+            this.collections = data.collections || this.getDefaultCollections();
+            this.counters = data.counters || this.getDefaultCounters();
+            this.convertDatesFromStorage();
+            this.saveToStorage();
+            console.log('📥 Datos importados correctamente');
+            return true;
+        } catch (error) {
+            console.error('❌ Error importando datos:', error);
+            return false;
+        }
     }
     
     // Inicializar con datos de prueba
     initializeData() {
+        console.log('🚀 Inicializando datos por defecto...');
+        
         // Admin por defecto
         this.insert('users', {
             email: 'admin@carvy.com',
@@ -93,6 +221,8 @@ class CarvyDatabase {
             status: 'active',
             createdAt: new Date()
         });
+        
+        console.log('✅ Datos inicializados correctamente');
     }
     
     // Generar ID único
@@ -112,6 +242,7 @@ class CarvyDatabase {
         };
         
         this.collections[collection].push(doc);
+        this.saveToStorage(); // Guardar después de insertar
         return id;
     }
     
@@ -149,6 +280,7 @@ class CarvyDatabase {
                 ...updates,
                 updatedAt: new Date()
             };
+            this.saveToStorage(); // Guardar después de actualizar
             return this.collections[collection][index];
         }
         return null;
@@ -160,6 +292,7 @@ class CarvyDatabase {
         if (index !== -1) {
             const deleted = this.collections[collection][index];
             this.collections[collection].splice(index, 1);
+            this.saveToStorage(); // Guardar después de eliminar
             return deleted;
         }
         return null;
@@ -251,7 +384,39 @@ class CarvyDatabase {
             totalDoctors: this.collections.doctors.length,
             totalPatients: this.collections.patients.length,
             totalConsultations: this.collections.consultations.length,
-            totalPrescriptions: this.collections.prescriptions.length
+            totalPrescriptions: this.collections.prescriptions.length,
+            lastSaved: localStorage.getItem(this.storageKey) ? 
+                JSON.parse(localStorage.getItem(this.storageKey)).lastSaved : null
         };
     }
+    
+    // Obtener información de almacenamiento
+    getStorageInfo() {
+        try {
+            const data = localStorage.getItem(this.storageKey);
+            const sizeInBytes = data ? new Blob([data]).size : 0;
+            const sizeInKB = (sizeInBytes / 1024).toFixed(2);
+            
+            return {
+                sizeInBytes,
+                sizeInKB,
+                lastSaved: data ? JSON.parse(data).lastSaved : null,
+                recordCount: Object.values(this.collections).reduce((total, collection) => total + collection.length, 0)
+            };
+        } catch (error) {
+            return {
+                sizeInBytes: 0,
+                sizeInKB: '0.00',
+                lastSaved: null,
+                recordCount: 0,
+                error: error.message
+            };
+        }
+    }
 }
+
+// Crear instancia global de la base de datos
+window.carvyDB = new CarvyDatabase();
+
+console.log('🏥 Carvy Database cargada y lista para usar');
+console.log('📊 Info de almacenamiento:', window.carvyDB.getStorageInfo());
