@@ -86,18 +86,19 @@ body {
 /* Mascota raccoon en la esquina */
 .mascot {
     position: absolute;
-    top: 15px;
-    right: 15px;
-    width: 120px;
-    height: 120px;
+    bottom: 20px; /* en vez de top, para fijarlo abajo */
+    right: 20px;  /* lo acerca a la esquina */
+    width: 180px; /* más pequeño */
+    height: auto; /* mantiene proporción */
     object-fit: contain;
     z-index: 100;
-    opacity: 0.95;
+    opacity: 1;
     transition: transform 0.3s ease, opacity 0.3s ease;
     border-radius: 0;
     box-shadow: none;
     border: none;
 }
+
 
 .mascot:hover {
     transform: scale(1.1);
